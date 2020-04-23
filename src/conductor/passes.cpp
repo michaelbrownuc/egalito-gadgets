@@ -27,9 +27,11 @@
 #include "pass/removepadding.h"
 #include "pass/updatelink.h"
 #include "pass/collectglobals.h"
+#include "pass/offsetsledding.h"
 #include "analysis/jumptable.h"
 #include "log/log.h"
 #include "log/temp.h"
+#include "generate/mirrorgen.h"
 
 void ConductorPasses::newElfPasses(ElfSpace *space) {
     ElfMap *elf = space->getElfMap();
@@ -134,4 +136,8 @@ void ConductorPasses::newMirrorPasses(Program *program) {
 
 void ConductorPasses::reloadedArchivePasses(Module *module) {
     module->getElfSpace()->setAliasMap(new FunctionAliasMap(module));
+}
+
+bool ConductorPasses::searchJumpOffsetsAndSled(Program* program) {
+    return OffsetSleddingPass::visit(program);
 }

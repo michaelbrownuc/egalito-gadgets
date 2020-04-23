@@ -15,6 +15,7 @@ public:
     void newExecutablePasses(Program *program);
     void newMirrorPasses(Program *program);
     void reloadedArchivePasses(Module *module);
+    bool searchJumpOffsetsAndSled(Program *program);
 };
 
 #endif

@@ -7,6 +7,7 @@ class HardenApp {
 private:
     bool quiet;
     EgalitoInterface *egalito;
+    bool eliminateGadgetsDuringGeneration = false;
 public:
     HardenApp() : quiet(true) {}
     void run(int argc, char **argv);
@@ -20,6 +21,7 @@ private:
     void doProfiling();
     void doWatching();
     void doRetpolines();
+    void doGadgetReduction();
 };
 
 #endif

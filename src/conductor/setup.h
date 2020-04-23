@@ -49,7 +49,9 @@ public:
     Sandbox *makeStaticExecutableSandbox(const char *outputFile);
     Sandbox *makeKernelSandbox(const char *outputFile);
     bool generateStaticExecutable(const char *outputFile);
+    bool generateStaticExecutableWithGadgetElimination(const char *outputFile);
     bool generateMirrorELF(const char *outputFile);
+    bool generateMirrorELFWithGadgetElimination(const char *outputFile);
     bool generateMirrorELF(const char *outputFile,
         const std::vector<Function *> &order);
     bool generateKernel(const char *outputFile);

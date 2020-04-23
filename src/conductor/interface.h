@@ -80,6 +80,13 @@ public:
         uniongen, otherwise mirrorgen.
     */
     void generate(const std::string &outputName, bool isUnion);
+
+    /** Generates an output ELF into outputName. If isUnion is true, use
+        uniongen, otherwise mirrorgen. Uses iterative address assignment 
+        with various techniques to avoid assigning addresses that encode
+        code-reuse gadgets.
+    */
+    void generateWithGadgetElim(const std::string &outputName, bool isUnion);
 public:
     // Public functions, but this interface could change.
     bool parseLoggingEnvVar(const char *envVar = "EGALITO_DEBUG");

@@ -13,6 +13,8 @@
 #include "pass/profilesave.h"
 #include "pass/condwatchpoint.h"
 #include "pass/retpoline.h"
+#include "pass/mergereturn.h"
+#include "pass/mergejump.h"
 #include "log/registry.h"
 #include "log/temp.h"
 
@@ -38,8 +40,14 @@ void HardenApp::parse(const std::string &filename, bool oneToOne) {
 }
 
 void HardenApp::generate(const std::string &output, bool oneToOne) {
-    std::cout << "Performing code generation into [" << output << "]...\n";
-    egalito->generate(output, !oneToOne);
+    if(eliminateGadgetsDuringGeneration){
+        std::cout << "Performing code generation with offset-based gadget elimination into [" << output << "]...\n";
+        egalito->generateWithGadgetElim(output, !oneToOne);
+    }
+    else{
+        std::cout << "Performing code generation into [" << output << "]...\n";
+        egalito->generate(output, !oneToOne);
+    }
 }
 
 void HardenApp::doCFI() {
@@ -91,6 +99,20 @@ void HardenApp::doRetpolines() {
     }
 }
 
+void HardenApp::doGadgetReduction() {
+    std::cout << "Performing gadget reduction...\n";
+    auto program = getProgram();
+    for(auto module : CIter::children(program)) {
+        RUN_PASS(MergeReturnPass(), module);
+        RUN_PASS(MergeJumpPass(), module);
+    }
+
+    // Mark this operation for gadget elimination based generation. We must perform this pass last among all passes. It can 
+    // clean up gadgets introduced by prior passes (rare, but possible). It is also possible that these passes will eliminate 
+    // some unintended gadgets, making this pass more likely to achieve a global minimum.
+    eliminateGadgetsDuringGeneration = true;
+}
+
 static void printUsage(const char *program) {
     std::cout << "Usage: " << program << " [options] [mode] input-file output-file\n"
         "    Transforms an executable by adding CFI and a shadow stack.\n"
@@ -115,6 +137,7 @@ static void printUsage(const char *program) {
         "    --permute-data Randomize order of global variables in .data\n"
         "    --profile      Add profiling counters to each function\n"
         "    --cond-watchpoint   Add conditional watchpoints for GDB\n"
+        "    --gadget-reduction   Transform code to reduce number and quality of residual CRA gadgets.\n"
         "Note: the EGALITO_DEBUG variable is also honoured.\n";
 }
 
@@ -147,6 +170,7 @@ void HardenApp::run(int argc, char **argv) {
         {"--permute-data",  [&ops] () { ops.push_back("permute-data"); }},
         {"--profile",       [&ops] () { ops.push_back("profile"); }},
         {"--cond-watchpoint", [&ops] () { ops.push_back("cond-watchpoint"); }},
+	    {"--gadget-reduction", [&ops] () { ops.push_back("gadget-reduction"); }},
     };
 
     std::map<std::string, std::function<void ()>> techniques = {
@@ -160,6 +184,7 @@ void HardenApp::run(int argc, char **argv) {
         {"profile",         [this] () { doProfiling(); }},
         {"cond-watchpoint", [this] () { doWatching(); }},
         {"retpolines",      [this] () { doRetpolines(); }},
+	    {"gadget-reduction",[this] () { doGadgetReduction(); }},
     };
 
     for(int a = 1; a < argc; a ++) {

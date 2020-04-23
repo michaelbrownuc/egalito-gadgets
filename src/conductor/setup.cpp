@@ -11,6 +11,7 @@
 #include "load/emulator.h"
 #include "chunk/dump.h"
 #include "operation/find2.h"
+#include "operation/mutator.h"
 #include "pass/clearspatial.h"
 #include "pass/dumplink.h"
 #include "util/feature.h"
@@ -147,7 +148,7 @@ void ConductorSetup::parseEgalitoArchive(const char *archive) {
 }
 
 void ConductorSetup::setBaseAddresses() {
-    unsigned long i = 0;
+    int i = 0;
     for(auto module : CIter::modules(conductor->getProgram())) {
         auto elfMap = module->getElfSpace()
             ? module->getElfSpace()->getElfMap() : nullptr;
@@ -155,8 +156,8 @@ void ConductorSetup::setBaseAddresses() {
         // jump table slots (to represent an index)
 #if 0 // use 0x1X000000 for module addrs (X starts at 0)
         if(setBaseAddress(module, elfMap, 0x10000000 + i*0x1000000)) {
-#else // use 0x0X000000 for module addrs, for 32MB each (X starts at 1)
-        if(setBaseAddress(module, elfMap, (i+1)*0x2000000)) {
+#else // use 0x0X000000 for module addrs (X starts at 1)
+        if(setBaseAddress(module, elfMap, (i+1)*0x1000000)) {
 #endif
             i ++;
         }
@@ -217,7 +218,6 @@ std::vector<Module *> ConductorSetup::addExtraLibraries(
         else modules.push_back(nullptr);
     }
 
-    conductor->parseLibraries();
     conductor->resolvePLTLinks();
     conductor->resolveData(true);
     conductor->resolveTLSLinks();
@@ -316,6 +316,35 @@ bool ConductorSetup::generateStaticExecutable(const char *outputFile) {
     return true;
 }
 
+//TODO: make this an iterative address assignment / transform loop
+//      this one might be different, check how they use base addresses for the lib code. if the base addresses are hugely different we can perform multiple transforms (1 per base address)
+bool ConductorSetup::generateStaticExecutableWithGadgetElimination(const char *outputFile) {
+    auto sandbox = makeStaticExecutableSandbox(outputFile);
+    auto backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
+    auto program = conductor->getProgram();
+
+    //auto generator = StaticGen(program, backing);
+    auto generator = UnionGen(program, backing);
+    generator.preCodeGeneration();
+
+    {
+        //moveCode(sandbox, true);  // calls sandbox->finalize()
+        moveCodeAssignAddresses(sandbox, true);
+        generator.afterAddressAssign();
+        {
+            // get data sections; allow links to change bytes in data sections
+            SegMap::mapAllSegments(this);
+            ConductorPasses(conductor).newExecutablePasses(program);
+        }
+        copyCodeToNewAddresses(sandbox, true);
+        moveCodeMakeExecutable(sandbox);
+    }
+
+    //generator.generate(outputFile);
+    generator.generateContent(outputFile);
+    return true;
+}
+
 bool ConductorSetup::generateMirrorELF(const char *outputFile) {
     auto sandbox = makeStaticExecutableSandbox(outputFile);
     auto backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
@@ -336,6 +365,46 @@ bool ConductorSetup::generateMirrorELF(const char *outputFile) {
         copyCodeToNewAddresses(sandbox, true);
         moveCodeMakeExecutable(sandbox);
     }
+
+    //generator.generate(outputFile);
+    generator.generateContent(outputFile);
+    return true;
+}
+
+//TODO: make this an iterative address assignment / transform loop
+bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFile) {
+    auto program = conductor->getProgram();
+    
+    auto sandbox = makeStaticExecutableSandbox(outputFile);
+    auto backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
+    auto generator = MirrorGen(program, backing);
+    generator.preCodeGeneration();
+
+    moveCodeAssignAddresses(sandbox, true);
+    
+    // Perform gadget elimination via offsets iteratively. Iterations are capped to ensure termination.
+    int optsCap = 1;
+    int optsDone = 0;
+
+    while(optsDone < optsCap && ConductorPasses(conductor).searchJumpOffsetsAndSled(program)){
+        std::cout << "ALERT:  A Gadget was eliminated. Need to redo addresses" << std::endl;
+        ++optsDone;
+        sandbox = makeStaticExecutableSandbox(outputFile);
+        backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
+        generator = MirrorGen(program, backing);
+        generator.preCodeGeneration();
+        moveCodeAssignAddresses(sandbox, true);
+    }
+
+    generator.afterAddressAssign();
+    {
+        // get data sections; allow links to change bytes in data sections
+        SegMap::mapAllSegments(this);
+        ConductorPasses(conductor).newMirrorPasses(program);
+    }
+    copyCodeToNewAddresses(sandbox, true);
+    moveCodeMakeExecutable(sandbox);
+    
 
     //generator.generate(outputFile);
     generator.generateContent(outputFile);

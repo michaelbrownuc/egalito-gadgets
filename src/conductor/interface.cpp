@@ -95,6 +95,35 @@ void EgalitoInterface::generate(const std::string &outputName, bool isUnion) {
     }
 }
 
+void EgalitoInterface::generateWithGadgetElim(const std::string &outputName, bool isUnion) {
+    auto program = getProgram();
+    prepareForGeneration(isUnion);
+    if(!isUnion) {
+        // generate mirror executable.
+        LOG(0, "Generating 1-1 executable with gadget elimination [" << outputName << "]...");
+        LdsoRefsPass ldsoRefs;
+        program->accept(&ldsoRefs);
+
+        ExternalSymbolLinksPass externalSymbolLinks;
+        program->accept(&externalSymbolLinks);
+
+        IFuncPLTs ifuncPLTs;
+        program->accept(&ifuncPLTs);
+
+        setup.generateMirrorELFWithGadgetElimination(outputName.c_str());
+    }
+    else {
+        // generate static executable.
+        LOG(0, "Generating union executable with gadget elimination [" << outputName << "]...");
+        LdsoRefsPass ldsoRefs;
+        program->accept(&ldsoRefs);
+        IFuncPLTs ifuncPLTs;
+        program->accept(&ifuncPLTs);
+
+        setup.generateStaticExecutableWithGadgetElimination(outputName.c_str());
+    }
+}
+
 void EgalitoInterface::generate(const std::string &outputName,
     const std::vector<Function *> &order) {
 
