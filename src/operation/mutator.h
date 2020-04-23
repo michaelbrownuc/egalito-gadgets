@@ -89,6 +89,7 @@ public:
     void setPreviousSibling(Chunk *c, Chunk *prev);
     void setNextSibling(Chunk *c, Chunk *next);
 private:
+    bool isAssignedPosition(Position *pos);
     void updateSizesAndAuthorities(Chunk *child);
     void updateGenerationCounts(Chunk *child);
     void updateAuthorityHelper(Chunk *root);

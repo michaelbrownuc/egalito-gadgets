@@ -416,6 +416,11 @@ void ChunkMutator::setNextSibling(Chunk *c, Chunk *next) {
     }
 }
 
+bool ChunkMutator::isAssignedPosition(Position *pos) {
+    return dynamic_cast<AbsolutePosition *>(pos)
+        || dynamic_cast<SlotPosition *>(pos);
+}
+
 void ChunkMutator::updateSizesAndAuthorities(Chunk *child) {
     // update sizes of parents and grandparents
     for(Chunk *c = chunk; c && !dynamic_cast<Module *>(c); c = c->getParent()) {
@@ -433,14 +438,14 @@ void ChunkMutator::updateGenerationCounts(Chunk *child) {
     int gen = 0;
     for(Chunk *c = child; c; c = c->getParent()) {
         gen = std::max(gen, c->getPosition()->getGeneration());
-        if(dynamic_cast<AbsolutePosition *>(c->getPosition())) break;
+        if(isAssignedPosition(c->getPosition())) break;
     }
     gen ++;  // increment generation by one
 
     // now, set generations of child and up to higher numbers
     for(Chunk *c = child; c; c = c->getParent()) {
         c->getPosition()->setGeneration(gen);
-        if(dynamic_cast<AbsolutePosition *>(c->getPosition())) break;
+        if(isAssignedPosition(c->getPosition())) break;
 
         // NOTE: each parent has a higher generation number. This ensures that
         // the authority has a higher number than any of its dependencies,
@@ -456,7 +461,7 @@ void ChunkMutator::updatePositions() {
     if(!PositionFactory::getInstance()->needsUpdatePasses()) return;
 
     for(Chunk *c = chunk; c; c = c->getParent()) {
-        if(dynamic_cast<AbsolutePosition *>(c->getPosition())) {
+        if(isAssignedPosition(c->getPosition())) {
             updatePositionHelper(c);
             //PositionDump().visit(c);
         }
