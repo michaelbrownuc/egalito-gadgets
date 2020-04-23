@@ -8,6 +8,8 @@
 #include "instr/concrete.h"
 #include "operation/mutator.h"
 #include "disasm/disassemble.h"
+#include "chunk/dump.h"
+#include "log/temp.h"
 
 /// Searches through jump instruction offsets for unintended CRA gadgets encoded within them. When one is found, this function eliminates
 /// the unintended gadget in the binary by inserting small NOP sleds prior to jump and call targets to push the encoding away from a gadget encoding.
@@ -22,7 +24,7 @@ bool OffsetSleddingPass::visit(Program* program) {
         for(Function* func : CIter::children(module->getFunctionList())){
             // TODO DELET THIS - Debug print
             std::cout << "Analyzing function: " << func->getName() << std::endl;
-            
+
             for (auto block : CIter::children(func)){
                 for (auto instr : CIter::children(block)){
                     auto semantic = instr->getSemantic();
@@ -37,6 +39,15 @@ bool OffsetSleddingPass::visit(Program* program) {
                                 continue;
                             // If the sled size needed is relatively small (arbitrarily chosen value), we should fix this immediately. 
                             else if(sled > 0 && sled <= 16){
+
+                                {
+                                    TemporaryLogLevel tll1("chunk", 20);
+                                    TemporaryLogLevel tll2("disasm", 20);
+                                    ChunkDumper dump;
+                                    func->accept(&dump);
+                                }
+            
+
                                 // TODO DELET THIS - Debug print
                                 address_t target_address = cfi->getLink()->getTargetAddress();
                                 std::cout << "  Control Flow Instruction " << cfi->getMnemonic() << " at address: ";
@@ -56,13 +67,33 @@ bool OffsetSleddingPass::visit(Program* program) {
                                     continue;
                                 }
                                 else if (Instruction* targetInstruction = dynamic_cast<Instruction*>(cfi->getLink()->getTarget())){
-                                    // Insert Sled                       
-                                    ChunkMutator mutator(targetInstruction->getParent(), true);
-                                    while(sled > 0){
-                                        mutator.insertBefore(targetInstruction, Disassemble::instruction({0x90}));
-                                        --sled;
+                                    {
+                                        // Insert Sled                       
+                                        ChunkMutator mutator((Block *)targetInstruction->getParent(), true);
+                                        while(sled > 0){
+                                            auto nop = Disassemble::instruction({0x90});
+                                            std::cout << "NOP size is " << nop->getSize() << std::endl;
+                                            mutator.insertBeforeJumpTo(targetInstruction, nop);
+                                            --sled;
+                                        }
                                     }
-                                    ChunkMutator(func, true);
+                                    {
+                                        ChunkMutator m(func, true);
+                                        //ChunkMutator m2((Function *)targetInstruction->getParent()->getParent(), true);
+                                    }
+
+                                    for(auto i : CIter::children((Block*)targetInstruction->getParent())) {
+                                        std::cout << "instruction " << i->getName() << " has offset? " << (dynamic_cast<OffsetPosition*>(i->getPosition()) ? "offset":"no")
+                                            << " prev sibling? " << i->getPreviousSibling()
+                                            << " parent? " << i->getParent() << "\n";
+                                    }
+                                }
+
+                                {
+                                    TemporaryLogLevel tll1("chunk", 20);
+                                    TemporaryLogLevel tll2("disasm", 20);
+                                    ChunkDumper dump;
+                                    func->accept(&dump);
                                 }
                                 
                                 return true;
