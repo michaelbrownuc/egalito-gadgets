@@ -10,6 +10,7 @@ public:
 
 protected:
     virtual void visit(Function *function);
+    int totalMerged = 0;
 };
 
 

@@ -14,8 +14,7 @@ public:
     void newArchivePasses(Program *program);
     void newExecutablePasses(Program *program);
     void newMirrorPasses(Program *program);
-    void reloadedArchivePasses(Module *module);
-    bool searchJumpOffsetsAndSled(Program *program);
+    void reloadedArchivePasses(Module *module);    
 };
 
 #endif

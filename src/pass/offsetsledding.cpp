@@ -14,108 +14,96 @@
 /// Searches through jump instruction offsets for unintended CRA gadgets encoded within them. When one is found, this function eliminates
 /// the unintended gadget in the binary by inserting small NOP sleds prior to jump and call targets to push the encoding away from a gadget encoding.
 /// This is meant to be used iteratively as each sled will affect all subsequent offsets. Addresses must be reassigned after each operation.
-/// Returns true if a gadget was found and was corrected, false if there are no corrections to make.
-bool OffsetSleddingPass::visit(Program* program) {
-    // Maintain a map of problematic calls to funcitons
-    std::map<Function*, std::vector<Instruction*>> problem_call_map;
-
+/// Visitation is profile guided. For each function in the profile, a random branch is selected for correction.
+void OffsetSleddingPass::visit(Profile profile) {
 	// Iterate through each function. Don't want to recurse - we want to be able to return after a single correction.
-	for(auto module : CIter::children(program)){
-        for(Function* func : CIter::children(module->getFunctionList())){
-            // TODO DELET THIS - Debug print
-            std::cout << "Analyzing function: " << func->getName() << std::endl;
+    for(auto iter = profile.begin(); iter != profile.end(); ++iter){
+        // Select a random instruction to fix
+        auto rand = iter->second->begin();
+        std::advance(rand, std::rand() % iter->second->size());
+        Instruction* instr = *rand;
+        auto semantic = instr->getSemantic();
+        ControlFlowInstruction* cfi = dynamic_cast<ControlFlowInstruction*>(semantic);
+        
+        // Get the size of the sled needed
+        int sled = containsUnintendedGadgets(cfi->calculateDisplacement());                
+        Instruction* targetInstruction = dynamic_cast<Instruction*>(cfi->getLink()->getTarget());
+        
+        // A sled size greater than 0 indicates a gadget was found.
+        // Since this pass is limited to near jumps, sled sizes should be small (1 or 2) in almost all cases.  
+        // Might have sleds of size 256/512 for huge functions.
+        if(sled > 0 && targetInstruction){                            
+            /* VERBOSITY commented out for verbosity purposes.
+            address_t target_address = cfi->getLink()->getTargetAddress();
+            std::cout << " In function " << func->getName();
+            std::cout << " Control Flow Instruction " << cfi->getMnemonic() << " at address: ";
+            std::cout << std::hex << instr->getAddress();
+            std::cout << " targets address: " ;
+            std::cout << std::hex << target_address;
+            std::cout << " with displacement: ";
+            std::cout << std::hex << cfi->calculateDisplacement();
+            //std::cout << " that encodes unintended gadgets, requiring a sled of size: " << std::dec << sled << std::endl;                                 
+            */
 
+            // For postive displacements, sleds must go before the target instruction to change encoding
+            if(cfi->calculateDisplacement() > 0){                       
+                ChunkMutator mutator((Block *)targetInstruction->getParent(), true);
+                while(sled > 0){
+                    mutator.insertBefore(targetInstruction, Disassemble::instruction({0x90}));
+                    --sled;
+                }
+            }
+            // For negative displacements, the sled must go before jump to change the encoding.
+            else{
+                ChunkMutator mutator((Block *) instr->getParent(), true);
+                while(sled > 0){
+                    mutator.insertBeforeJumpTo(instr, Disassemble::instruction({0x90}));
+                    --sled;
+                }
+            }
+
+            // Update function to account for new block size
+            ChunkMutator m(iter->first, true);                           
+            
+        }        
+    }    
+}
+
+
+/// Scans a program and generates a profile of branches that encode gadget-producing instructions (GPIs).
+Profile OffsetSleddingPass::generateProfile(Program* program){
+    Profile profile;
+
+    for(auto module : CIter::children(program)){
+        for(Function* func : CIter::children(module->getFunctionList())){
             for (auto block : CIter::children(func)){
                 for (auto instr : CIter::children(block)){
                     auto semantic = instr->getSemantic();
-                    if(ControlFlowInstruction* cfi = dynamic_cast<ControlFlowInstruction*>(semantic)){  
-                        // Limit our pass to RIP relative links
-                        if(cfi->getLink()->isRIPRelative()){
-                            // Check if the displacement encodes a gadget producing instruction
-                            int sled = containsUnintendedGadgets(cfi->calculateDisplacement());                
-                            
-                            // Check the size of the sled needed. 0 indicates no gadget found. Move on.
-                            if(sled == 0)
-                                continue;
-                            // If the sled size needed is relatively small (arbitrarily chosen value), we should fix this immediately. 
-                            else if(sled > 0 && sled <= 16){
-
-                                {
-                                    TemporaryLogLevel tll1("chunk", 20);
-                                    TemporaryLogLevel tll2("disasm", 20);
-                                    ChunkDumper dump;
-                                    func->accept(&dump);
-                                }
-            
-
-                                // TODO DELET THIS - Debug print
-                                address_t target_address = cfi->getLink()->getTargetAddress();
-                                std::cout << "  Control Flow Instruction " << cfi->getMnemonic() << " at address: ";
-                                std::cout << std::hex << instr->getAddress();
-                                std::cout << " targets address: " ;
-                                std::cout << std::hex << target_address;
-                                std::cout << " with displacement: ";
-                                std::cout << std::hex << cfi->calculateDisplacement();
-                                std::cout << " that encodes unintended gadgets, requiring a sled of size: " << std::dec << sled << std::endl;
-                                ////
-
-                                // TODO: DELET THIS
-                                std::cout << "    Greedily adding small sled." << std::endl;
-                                
-                                if(dynamic_cast<Function*>(cfi->getLink()->getTarget())){
-                                    std::cout << "ITS A FUNCTION. SKIPPING FOR NOW." << std::endl;
-                                    continue;
-                                }
-                                else if (Instruction* targetInstruction = dynamic_cast<Instruction*>(cfi->getLink()->getTarget())){
-                                    {
-                                        // Insert Sled                       
-                                        ChunkMutator mutator((Block *)targetInstruction->getParent(), true);
-                                        while(sled > 0){
-                                            auto nop = Disassemble::instruction({0x90});
-                                            std::cout << "NOP size is " << nop->getSize() << std::endl;
-                                            mutator.insertBeforeJumpTo(targetInstruction, nop);
-                                            --sled;
-                                        }
-                                    }
-                                    {
-                                        ChunkMutator m(func, true);
-                                        //ChunkMutator m2((Function *)targetInstruction->getParent()->getParent(), true);
-                                    }
-
-                                    for(auto i : CIter::children((Block*)targetInstruction->getParent())) {
-                                        std::cout << "instruction " << i->getName() << " has offset? " << (dynamic_cast<OffsetPosition*>(i->getPosition()) ? "offset":"no")
-                                            << " prev sibling? " << i->getPreviousSibling()
-                                            << " parent? " << i->getParent() << "\n";
-                                    }
-                                }
-
-                                {
-                                    TemporaryLogLevel tll1("chunk", 20);
-                                    TemporaryLogLevel tll2("disasm", 20);
-                                    ChunkDumper dump;
-                                    func->accept(&dump);
-                                }
-                                
-                                return true;
+                    ControlFlowInstruction* cfi = dynamic_cast<ControlFlowInstruction*>(semantic);
+                    // Limit our pass to RIP relative jump instructions (conditional and unconditional)
+                    if (cfi && cfi->getLink()->isRIPRelative()) {  
+                        // Check if the displacement encodes a gadget producing instruction
+                        int sled = containsUnintendedGadgets(cfi->calculateDisplacement());
+                        Instruction* targetInstruction = dynamic_cast<Instruction*>(cfi->getLink()->getTarget());                        
+                        if(sled > 0 && targetInstruction){
+                            // Add to profile
+                            auto loc = profile.find(func);
+                            if(loc != profile.end()){
+                                loc->second->push_back(instr);
                             }
-                            // If the sled size needed is large, we catalog it for later. Smaller operations may resolve it, or we can find the most efficient way to handle it.
-                            else if(sled > 16){
-                                //TODO DELET THIS
-                                std::cout << "    Cataloging large sled for later." << std::endl;
-                            }
-                            else  std::cout << "    ERROR: Negative sled value encountered. This should not happen. Ignoring." << std::endl;
+                            else{                                                                
+                                std::vector<Instruction*>* branches = new std::vector<Instruction*>();
+                                branches->push_back(instr);
+                                profile.insert({func, branches});
+                            }                        
                         }
                     }
                 }
             }
         }
-        // TODO: Insert function order swapping code here later.
     }
-
-    // If the scan completes without returning early, it's time to choose a harder optimization from the catalog.
-    return false;
+    return profile;
 }
-
 
 /// Determines if the displacement encodes a gadget producing instruction. Returns 0 if no unintended gadget is found. 
 /// If found, returns the necessary sled size to change the encoding.

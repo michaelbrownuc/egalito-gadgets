@@ -21,6 +21,10 @@
 #include "log/registry.h"
 #include "log/log.h"
 #include "log/temp.h"
+#include "pass/offsetsledding.h"
+
+// Defines the maximum number of allowable failures to improve a functions displacement-based GPIs
+#define MAX_FAILS 25
 
 address_t runEgalito(ElfMap *elf, ElfMap *egalito);
 
@@ -371,7 +375,6 @@ bool ConductorSetup::generateMirrorELF(const char *outputFile) {
     return true;
 }
 
-//TODO: make this an iterative address assignment / transform loop
 bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFile) {
     auto program = conductor->getProgram();
     
@@ -382,19 +385,65 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
 
     moveCodeAssignAddresses(sandbox, true);
     
-    // Perform gadget elimination via offsets iteratively. Iterations are capped to ensure termination.
-    int optsCap = 1;
+    // Generate transformation profile (worklist), failure list, other variables   
+    Profile profile = OffsetSleddingPass::generateProfile(program);    
+    std::map<Function*, int> failList;
     int optsDone = 0;
+    bool progressing = true;    
 
-    while(optsDone < optsCap && ConductorPasses(conductor).searchJumpOffsetsAndSled(program)){
-        std::cout << "ALERT:  A Gadget was eliminated. Need to redo addresses" << std::endl;
+    // Print baseline status
+    int total_probs = 0;
+    for(auto iter = profile.begin(); iter != profile.end(); ++iter){
+        total_probs += iter->second->size();
+    }    
+    std::cout << " Before Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << std::endl;
+    
+    while(progressing && profile.size() > 0){
+        // Make profile-guided visit         
+        OffsetSleddingPass::visit(profile);
         ++optsDone;
+
+        // Regenerate program layout and a new profile and determine if another round is necessary.
         sandbox = makeStaticExecutableSandbox(outputFile);
         backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
         generator = MirrorGen(program, backing);
         generator.preCodeGeneration();
         moveCodeAssignAddresses(sandbox, true);
+        Profile temp = OffsetSleddingPass::generateProfile(program);
+       
+        // If no functions to fix, we're done
+        if(temp.size() == 0 )
+            break;
+        
+        // Iterate through new profile and record failures
+        for(auto iter = temp.begin(); iter != temp.end(); ++iter){
+            // If the new profile indicates the same number or more GPIs, the transform failed to improve
+            if(profile.count(iter->first) && iter->second->size() >= profile[iter->first]->size()){               
+                auto loc = failList.find(iter->first);
+                if(loc !=  failList.end())
+                    loc->second += 1;
+                else
+                    failList[iter->first] = 1;
+            }               
+        }
+
+        // Remove repeatedly failing functions from new profile
+        for(auto iter = failList.begin(); iter != failList.end(); ++iter)
+            if(iter->second >= MAX_FAILS)            
+                temp.erase(iter->first);
+
+        
+        //Set new profile to current and iterate again 
+        profile = temp;       
     }
+
+    // Report Success
+    profile = OffsetSleddingPass::generateProfile(program);
+    total_probs = 0;
+    for(auto iter = profile.begin(); iter != profile.end(); ++iter){
+        total_probs += iter->second->size();
+    }    
+    std::cout << " After Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << "; " << optsDone << " iterations required to complete small displacement sledding."  << std::endl;
 
     generator.afterAddressAssign();
     {

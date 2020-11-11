@@ -137,7 +137,3 @@ void ConductorPasses::newMirrorPasses(Program *program) {
 void ConductorPasses::reloadedArchivePasses(Module *module) {
     module->getElfSpace()->setAliasMap(new FunctionAliasMap(module));
 }
-
-bool ConductorPasses::searchJumpOffsetsAndSled(Program* program) {
-    return OffsetSleddingPass::visit(program);
-}

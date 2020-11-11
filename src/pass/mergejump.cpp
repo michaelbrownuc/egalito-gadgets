@@ -14,10 +14,12 @@
 /// 1) EDGE CASE: The return we are getting rid of may be the sole target of a jump (conditional or direct). In this case we can eliminate the return and hook the pre-existing jump up directly to the preserved return. It may be worth analyzing our options for the return target to choose one that does not have this benefit. It is worht noting that this may incur penalties on AMD branch predictors if this eliminates a rep retn and instead hooks up the conditional jump to regular return. Consider this problem when improving this pass.
 void MergeJumpPass::visit(Module *module) {
     recurse(module->getFunctionList());
+	
+	// Report stats
+	std::cout << " Total merged jumps: " << totalMerged << std::endl;
 }
 
 void MergeJumpPass::visit(Function* function) {
-	// TODO: Figure out how target registers (currently a string) are represented in an indirect jump instruction
 	std::map<Register, std::vector<Instruction*>> jumps_map;
 	std::string name = function->getName();	
 	
@@ -54,8 +56,13 @@ void MergeJumpPass::visit(Function* function) {
 	while(it !=  jumps_map.end()){
 		if(it->second.size() > 1){
 			mutated = true;
-			std::cout << "    Merging " << it->second.size() << " jumps to register: " << it->first << " for function: " << function->getName() << std::endl;
 			
+			// VERBOSITY commented out for verbosity purposes.
+			//std::cout << "    Merging " << it->second.size() << " jumps to register: " << it->first << " for function: " << function->getName() << std::endl;
+			
+			totalMerged += it->second.size()-1;
+
+
 			// Make the first discovered indirect jump instruction the target for all others.		
 			Instruction* jump_target = it->second[0];
 

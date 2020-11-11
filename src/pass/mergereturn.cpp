@@ -13,6 +13,9 @@
 /// 2) EDGE CASE: Returns to be merged have common instruction "prefixes". We can choose cannonical return based on the longest common prefix, and eliminate both returns and short prefixes, replacing with a jump from the eliminated instructions to appropraite prefix point.
 void MergeReturnPass::visit(Module *module) {
     recurse(module->getFunctionList());
+	
+	// Report stats
+	std::cout << " Total merged returns: " << totalMerged << std::endl;
 }
 
 void MergeReturnPass::visit(Function* function) {
@@ -34,7 +37,11 @@ void MergeReturnPass::visit(Function* function) {
 	
 	// Performs a return merge on the function if it has multiple return instructions.
 	if(rets.size() > 1){
-		std::cout << "    Merging returns for function: " << function->getName() << std::endl;
+
+		// VERBOSITY commented out for verbosity purposes.
+		//std::cout << "    Merging returns for function: " << function->getName() << std::endl;
+
+		totalMerged += rets.size()-1;
 
 		// Make the first discovered return instruction the target for all other
 		Instruction* ret_target = rets[0];
