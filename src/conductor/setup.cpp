@@ -443,7 +443,7 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
     for(auto iter = profile.begin(); iter != profile.end(); ++iter){
         total_probs += iter->second->size();
     }    
-    std::cout << " After Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << "; " << optsDone << " iterations required to complete small displacement sledding."  << std::endl;
+    std::cout << " After Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << "; " << optsDone << " iterations required."  << std::endl;
 
     generator.afterAddressAssign();
     {

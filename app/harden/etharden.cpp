@@ -15,6 +15,7 @@
 #include "pass/retpoline.h"
 #include "pass/mergereturn.h"
 #include "pass/mergejump.h"
+#include "pass/widenbarriers.h"
 #include "log/registry.h"
 #include "log/temp.h"
 
@@ -105,6 +106,7 @@ void HardenApp::doGadgetReduction() {
     for(auto module : CIter::children(program)) {
         RUN_PASS(MergeReturnPass(), module);
         RUN_PASS(MergeJumpPass(), module);
+        RUN_PASS(WidenBarriersPass(), module);
     }
 
     // Mark this operation for gadget elimination based generation. We must perform this pass last among all passes. It can 
