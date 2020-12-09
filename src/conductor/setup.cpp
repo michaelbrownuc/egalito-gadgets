@@ -22,6 +22,7 @@
 #include "log/log.h"
 #include "log/temp.h"
 #include "pass/offsetsledding.h"
+#include "pass/promotejumps.h"
 
 // Defines the maximum number of allowable failures to improve a functions displacement-based GPIs
 #define MAX_FAILS 25
@@ -323,6 +324,9 @@ bool ConductorSetup::generateStaticExecutable(const char *outputFile) {
 //TODO: make this an iterative address assignment / transform loop
 //      this one might be different, check how they use base addresses for the lib code. if the base addresses are hugely different we can perform multiple transforms (1 per base address)
 bool ConductorSetup::generateStaticExecutableWithGadgetElimination(const char *outputFile) {
+    std::cout << " BIG NOTE THIS IS NOT YET IMPLEMENTED." << std::endl;
+
+
     auto sandbox = makeStaticExecutableSandbox(outputFile);
     auto backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
     auto program = conductor->getProgram();
@@ -388,8 +392,7 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
     // Generate transformation profile (worklist), failure list, other variables   
     Profile profile = OffsetSleddingPass::generateProfile(program);    
     std::map<Function*, int> failList;
-    int optsDone = 0;
-    bool progressing = true;    
+    int optsDone = 0;      
 
     // Print baseline status
     int total_probs = 0;
@@ -398,10 +401,14 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
     }    
     std::cout << " Before Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << std::endl;
     
-    while(progressing && profile.size() > 0){
+    while(profile.size() > 0){
         // Make profile-guided visit         
         OffsetSleddingPass::visit(profile);
         ++optsDone;
+
+        // Re-run jump promotion pass
+        PromoteJumpsPass promoteJumps;
+        program->accept(&promoteJumps);
 
         // Regenerate program layout and a new profile and determine if another round is necessary.
         sandbox = makeStaticExecutableSandbox(outputFile);
