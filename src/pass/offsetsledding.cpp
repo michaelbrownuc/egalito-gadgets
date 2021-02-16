@@ -15,7 +15,7 @@
 /// the unintended gadget in the binary by inserting small NOP sleds prior to jump and call targets to push the encoding away from a gadget encoding.
 /// This is meant to be used iteratively as each sled will affect all subsequent offsets. Addresses must be reassigned after each operation.
 /// Visitation is profile guided. For each function in the profile, a random branch is selected for correction.
-void OffsetSleddingPass::visit(Profile profile) {
+void OffsetSleddingPass::visit(OffsetSleddingProfile profile) {
 	// Iterate through each function. Don't want to recurse - we want to be able to return after a single correction.
     for(auto iter = profile.begin(); iter != profile.end(); ++iter){
         // Select a random instruction to fix
@@ -71,8 +71,8 @@ void OffsetSleddingPass::visit(Profile profile) {
 
 
 /// Scans a program and generates a profile of branches that encode gadget-producing instructions (GPIs).
-Profile OffsetSleddingPass::generateProfile(Program* program){
-    Profile profile;
+OffsetSleddingProfile OffsetSleddingPass::generateProfile(Program* program){
+    OffsetSleddingProfile profile;
 
     for(auto module : CIter::children(program)){
         for(Function* func : CIter::children(module->getFunctionList())){

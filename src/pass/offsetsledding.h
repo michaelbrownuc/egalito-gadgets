@@ -4,7 +4,7 @@
 #include "chunk/program.h"
 #include "chunk/concrete.h"
 
-using Profile = std::map<Function*, std::vector<Instruction*>*>;
+using OffsetSleddingProfile = std::map<Function*, std::vector<Instruction*>*>;
 
 
 /// This pass behaves differently than others. It is meant to be called iteratively, making a single edit per function and 
@@ -12,11 +12,9 @@ using Profile = std::map<Function*, std::vector<Instruction*>*>;
 class OffsetSleddingPass {
     
 public:
-    static void visit(Profile profile);
-    static Profile generateProfile(Program* program);
-
-private:
-    static int containsUnintendedGadgets(diff_t displacement);
+    static void visit(OffsetSleddingProfile profile);
+    static OffsetSleddingProfile generateProfile(Program* program);
+    static int containsUnintendedGadgets(diff_t displacement);    
 };
 
 

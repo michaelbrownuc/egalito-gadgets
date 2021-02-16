@@ -23,9 +23,11 @@
 #include "log/temp.h"
 #include "pass/offsetsledding.h"
 #include "pass/promotejumps.h"
+#include "pass/functionreordering.h"
 
-// Defines the maximum number of allowable failures to improve a functions displacement-based GPIs
-#define MAX_FAILS 25
+// Defines the maximum number of allowable failures to improve a function's displacement-based GPIs
+#define MAX_SLED_FAILS 25
+#define MAX_REORDER_FAILS 50
 
 address_t runEgalito(ElfMap *elf, ElfMap *egalito);
 
@@ -386,24 +388,25 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
     auto backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
     auto generator = MirrorGen(program, backing);
     generator.preCodeGeneration();
-
     moveCodeAssignAddresses(sandbox, true);
     
-    // Generate transformation profile (worklist), failure list, other variables   
-    Profile profile = OffsetSleddingPass::generateProfile(program);    
+    /*      OFFSET SLEDDING TRANSFORM CODE          */
+
+    // Generate offset sledding transformation profile (worklist), failure list, other variables   
+    OffsetSleddingProfile os_profile = OffsetSleddingPass::generateProfile(program);    
     std::map<Function*, int> failList;
     int optsDone = 0;      
 
     // Print baseline status
     int total_probs = 0;
-    for(auto iter = profile.begin(); iter != profile.end(); ++iter){
+    for(auto iter = os_profile.begin(); iter != os_profile.end(); ++iter){
         total_probs += iter->second->size();
     }    
-    std::cout << " Before Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << std::endl;
+    std::cout << " Before Offset Sledding: Functions = " << os_profile.size() << "; Branches = " << total_probs << std::endl;
     
-    while(profile.size() > 0){
+    while(os_profile.size() > 0){
         // Make profile-guided visit         
-        OffsetSleddingPass::visit(profile);
+        OffsetSleddingPass::visit(os_profile);
         ++optsDone;
 
         // Re-run jump promotion pass
@@ -416,16 +419,17 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
         generator = MirrorGen(program, backing);
         generator.preCodeGeneration();
         moveCodeAssignAddresses(sandbox, true);
-        Profile temp = OffsetSleddingPass::generateProfile(program);
+
+        OffsetSleddingProfile os_temp = OffsetSleddingPass::generateProfile(program);
        
         // If no functions to fix, we're done
-        if(temp.size() == 0 )
+        if(os_temp.size() == 0 )
             break;
         
         // Iterate through new profile and record failures
-        for(auto iter = temp.begin(); iter != temp.end(); ++iter){
+        for(auto iter = os_temp.begin(); iter != os_temp.end(); ++iter){
             // If the new profile indicates the same number or more GPIs, the transform failed to improve
-            if(profile.count(iter->first) && iter->second->size() >= profile[iter->first]->size()){               
+            if(os_profile.count(iter->first) && iter->second->size() >= os_profile[iter->first]->size()){               
                 auto loc = failList.find(iter->first);
                 if(loc !=  failList.end())
                     loc->second += 1;
@@ -436,32 +440,112 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
 
         // Remove repeatedly failing functions from new profile
         for(auto iter = failList.begin(); iter != failList.end(); ++iter)
-            if(iter->second >= MAX_FAILS)            
-                temp.erase(iter->first);
+            if(iter->second >= MAX_SLED_FAILS)            
+                os_temp.erase(iter->first);
 
         
         //Set new profile to current and iterate again 
-        profile = temp;       
+        os_profile = os_temp;       
     }
 
     // Report Success
-    profile = OffsetSleddingPass::generateProfile(program);
+    os_profile = OffsetSleddingPass::generateProfile(program);
     total_probs = 0;
-    for(auto iter = profile.begin(); iter != profile.end(); ++iter){
+    for(auto iter = os_profile.begin(); iter != os_profile.end(); ++iter){
         total_probs += iter->second->size();
     }    
-    std::cout << " After Offset Sledding: Functions = " << profile.size() << "; Branches = " << total_probs << "; " << optsDone << " iterations required."  << std::endl;
+    std::cout << " After Offset Sledding: Functions = " << os_profile.size() << "; Branches = " << total_probs << "; " << optsDone << " iterations required."  << std::endl;
 
+    /*      END  OFFSET SLEDDING TRANSFORM CODE          */
+
+    /*      FUNCTION RE-ORDERING TRANSFORM CODE          */
+ 
+    // Generate transformation profile (worklist), function order, other variables
+    FunctionReorderingProfile fr_profile = FunctionReorderingPass::generateProfile(program);
+    FunctionOrder order = Generator(sandbox, true).pickFunctionOrder(program->getFirst()); 
+    int fails = 0;
+    optsDone = 0;
+
+    // Print baseline stats
+    total_probs = 0;
+    for(auto iter = fr_profile.begin(); iter != fr_profile.end(); ++iter){
+        total_probs += iter->second->size();
+    }    
+    std::cout << " Before Function Reordering: Functions = " << fr_profile.size() << "; Calls = " << total_probs << std::endl;
+
+    while(fr_profile.size() > 0 && fails < MAX_REORDER_FAILS){
+        ++optsDone;
+
+        // Make profile-guided visit        
+        FunctionOrder order_temp = order;
+        order_temp = FunctionReorderingPass::visit(fr_profile, order_temp);
+
+        // Re-run jump promotion pass, regenerate program layout and a new profile
+        PromoteJumpsPass promoteJumps;
+        program->accept(&promoteJumps);
+
+        sandbox = makeStaticExecutableSandbox(outputFile);
+        backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
+        generator = MirrorGen(program, backing);
+        generator.preCodeGeneration();
+        Generator(sandbox, true).assignAddresses(conductor->getProgram(), order_temp);
+
+        FunctionReorderingProfile fr_temp = FunctionReorderingPass::generateProfile(program);
+       
+        // Check to see if we improved things
+        int temp_probs = 0;
+        for(auto iter = fr_temp.begin(); iter != fr_temp.end(); ++iter){
+            temp_probs += iter->second->size();
+        }
+
+        if(temp_probs < total_probs){    
+            order = order_temp;
+            fr_profile = fr_temp;
+            total_probs = temp_probs;
+            fails = 0; // Makes failure cap consecutive
+
+            // TODO DELET THIS - VERBOSITY
+            std::cout << " Successful reordering iteration: " << optsDone << ": Functions = " << fr_profile.size() << "; Calls = " << temp_probs << "; " << std::endl;
+        }
+        else{
+            ++fails;
+        }        
+    }
+
+    // Final regeneration of program layout, in case last iteration above was a failure
+    PromoteJumpsPass promoteJumps;
+    program->accept(&promoteJumps);
+
+    sandbox = makeStaticExecutableSandbox(outputFile);
+    backing = static_cast<MemoryBufferBacking *>(sandbox->getBacking());
+    generator = MirrorGen(program, backing);
+    generator.preCodeGeneration();
+    Generator(sandbox, true).assignAddresses(conductor->getProgram(), order);
+
+    // Report Success
+    fr_profile = FunctionReorderingPass::generateProfile(program);
+    total_probs = 0;
+    for(auto iter = fr_profile.begin(); iter != fr_profile.end(); ++iter){
+        total_probs += iter->second->size();
+    }    
+    std::cout << " After Function Reordering: Functions = " << fr_profile.size() << "; Calls = " << total_probs << "; " << optsDone << " iterations required, " << fails << " consecutive failures encountered."  << std::endl;
+
+    /*      END FUNCITON REORDERING TRANSFORM CODE          */
+
+    // Now that we are done with offset / ordering manipulations, finish producing transformed binary
     generator.afterAddressAssign();
     {
         // get data sections; allow links to change bytes in data sections
         SegMap::mapAllSegments(this);
         ConductorPasses(conductor).newMirrorPasses(program);
     }
-    copyCodeToNewAddresses(sandbox, true);
+    
+    // Toggle these lines with enable / disable of function reordering code
+    //copyCodeToNewAddresses(sandbox, true);
+    Generator(sandbox, true).generateCode(conductor->getProgram(), order);
+    
     moveCodeMakeExecutable(sandbox);
     
-
     //generator.generate(outputFile);
     generator.generateContent(outputFile);
     return true;
