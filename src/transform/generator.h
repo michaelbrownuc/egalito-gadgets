@@ -36,8 +36,11 @@ public:
 
     // For testing purposes only. Jumps directly to main, skipping init.
     void jumpToSandbox(Module *module, const char *function = "main");
-private:
+
+    // Made public for function re-ordering passes
     std::vector<Function *> pickFunctionOrder(Module *module);
+
+private:    
     void pickFunctionAddressInSandbox(Function *function);
     void pickPLTAddressInSandbox(PLTTrampoline *trampoline);
 };
