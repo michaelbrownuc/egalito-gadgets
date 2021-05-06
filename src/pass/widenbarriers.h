@@ -1,5 +1,5 @@
-#ifndef EGALITO_WIDEN_BARRIERS_RETURN_H
-#define EGALITO_WIDEN_BARRIERS_RETURN_H
+#ifndef EGALITO_WIDEN_BARRIERS_H
+#define EGALITO_WIDEN_BARRIERS_H
 
 #include "chunkpass.h"
 #include "instr/assembly.h"
