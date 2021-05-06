@@ -16,6 +16,7 @@
 #include "pass/mergereturn.h"
 #include "pass/mergejump.h"
 #include "pass/widenbarriers.h"
+#include "pass/sanitizevolatileregisters.h"
 #include "log/registry.h"
 #include "log/temp.h"
 
@@ -115,6 +116,14 @@ void HardenApp::doGadgetReduction() {
     eliminateGadgetsDuringGeneration = true;
 }
 
+void HardenApp::doGadgetPoisoning() {
+    std::cout << "Performing gadget poisoning...\n";
+    auto program = getProgram();
+    for(auto module : CIter::children(program)) {
+        RUN_PASS(SanitizeVolatileRegistersPass(), module);
+    }
+}
+
 static void printUsage(const char *program) {
     std::cout << "Usage: " << program << " [options] [mode] input-file output-file\n"
         "    Transforms an executable by adding CFI and a shadow stack.\n"
@@ -139,7 +148,8 @@ static void printUsage(const char *program) {
         "    --permute-data Randomize order of global variables in .data\n"
         "    --profile      Add profiling counters to each function\n"
         "    --cond-watchpoint   Add conditional watchpoints for GDB\n"
-        "    --gadget-reduction   Transform code to reduce number and quality of residual CRA gadgets.\n"
+        "    --gadget-reduction   Transform code to eliminate code reuse gadgets.\n"
+        "    --gadget-poisoning   Transform code to poison code reuse gadgets, reducing their quality.\n"
         "Note: the EGALITO_DEBUG variable is also honoured.\n";
 }
 
@@ -173,6 +183,7 @@ void HardenApp::run(int argc, char **argv) {
         {"--profile",       [&ops] () { ops.push_back("profile"); }},
         {"--cond-watchpoint", [&ops] () { ops.push_back("cond-watchpoint"); }},
 	    {"--gadget-reduction", [&ops] () { ops.push_back("gadget-reduction"); }},
+        {"--gadget-poisoning", [&ops] () { ops.push_back("gadget-poisoning"); }},
     };
 
     std::map<std::string, std::function<void ()>> techniques = {
@@ -187,6 +198,7 @@ void HardenApp::run(int argc, char **argv) {
         {"cond-watchpoint", [this] () { doWatching(); }},
         {"retpolines",      [this] () { doRetpolines(); }},
 	    {"gadget-reduction",[this] () { doGadgetReduction(); }},
+        {"gadget-poisoning",[this] () { doGadgetPoisoning(); }},
     };
 
     for(int a = 1; a < argc; a ++) {

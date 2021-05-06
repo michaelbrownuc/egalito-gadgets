@@ -22,6 +22,7 @@ private:
     void doWatching();
     void doRetpolines();
     void doGadgetReduction();
+    void doGadgetPoisoning();
 };
 
 #endif
