@@ -503,9 +503,6 @@ bool ConductorSetup::generateMirrorELFWithGadgetElimination(const char *outputFi
             fr_profile = fr_temp;
             total_probs = temp_probs;
             fails = 0; // Makes failure cap consecutive
-
-            // TODO DELET THIS - VERBOSITY
-            std::cout << " Successful reordering iteration: " << optsDone << ": Functions = " << fr_profile.size() << "; Calls = " << temp_probs << "; " << std::endl;
         }
         else{
             ++fails;
