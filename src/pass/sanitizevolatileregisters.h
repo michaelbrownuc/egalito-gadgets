@@ -14,6 +14,7 @@ protected:
 
 private:
     void poisonReturn(Instruction* instr);
+    void poisonIndirectCall(Instruction* instr);
 };
 
 
