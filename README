@@ -7,7 +7,7 @@ If you use this tool in your research, please cite the following paper
 Brown, Michael D., Matthew Pruett, Robert Bigelow, Girish Mururu, 
 and Santosh Pande. "Not So Fast: Understanding and Mitigating Negative 
 Impacts of Compiler Optimizations on Code Reuse Gadget Sets" 
-arXiv:2005.08363v2 [cs.CR]. 2021.**[\[pdf\]](https://arxiv.org/pdf/2005.08363.pdf)
+arXiv:2005.08363v2 [cs.CR]. 2021. (https://arxiv.org/pdf/2005.08363.pdf)
 
 Suport: Gadget elimination behavior currently supports only x86_64 and work only 
 in Egalito's mirror ELF mode. Gadget poisoning behavior is similarly limited in 
