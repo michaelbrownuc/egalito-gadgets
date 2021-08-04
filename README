@@ -1,3 +1,27 @@
+A modified version of Egalito targeted at statically eliminating and/or poisoning 
+code reuse attack (CRA) gadgets.
+
+If you use this tool in your research, please cite the following paper 
+(currently on Arxiv, but to appear in OOPSLA 2021):
+
+**Brown, Michael D., Matthew Pruett, Robert Bigelow, Girish Mururu, 
+and Santosh Pande. "Not So Fast: Understanding and Mitigating Negative 
+Impacts of Compiler Optimizations on Code Reuse Gadget Sets" 
+arXiv:2005.08363v2 [cs.CR]. 2021.**[\[pdf\]](https://arxiv.org/pdf/2005.08363.pdf)
+
+Suport: Gadget elimination behavior currently supports only x86_64 and work only 
+in Egalito's mirror ELF mode. Gadget poisoning behavior is similarly limited in 
+support, but currently does not work for GCC produced binaries as GCC does not 
+respect the AMD64 ABI by default. It does work with Clang binaries.
+
+To use: Gadget elimination behavior can be triggered with the etharden app using the 
+`--gadget-reduction` flag. Gadget poisoning behavior can be triggered using the 
+`--gadget-poisoning` flag with the etharden app.
+
+
+Egalito's original README follows.
+
+
 Egalito is a binary recompiler, designed for implementing security hardening.
 It uses a low-level intermediate representation (EIR or Chunk) that accurately
 reflects all aspects of a program binary. Egalito uses metadata present in
